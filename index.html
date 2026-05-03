@@ -3,103 +3,274 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stress Sim v1.0.0</title>
+    <title>Stress Sim v1.1.0</title>
     <style>
         :root {
-            --bg-deep: #0b0f1a;
-            --sidebar-bg: #161c2d;
+            --bg-base: #0b0f1a;
+            --side-bg: #161c2d;
             --panel-bg: #1e253a;
-            --accent-blue: #3b82f6;
-            --accent-red: #cc3344;
-            --accent-purple: #8b5cf6;
-            --text-main: #f1f5f9;
+            --text-white: #f1f5f9;
             --text-dim: #94a3b8;
+            --accent: #3b82f6;
+            --danger: #cc3344;
         }
-
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        
         body {
-            background-color: var(--bg-deep);
-            color: var(--text-main);
-            font-family: -apple-system, sans-serif;
+            background: var(--bg-base);
+            color: var(--text-white);
+            font-family: sans-serif;
             height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
-
-        /* デバッグバー */
-        #debug-bar {
+        #header {
             background: #000;
-            height: 26px;
+            height: 24px;
             font-size: 10px;
             font-family: monospace;
             display: flex;
             align-items: center;
-            padding: 0 15px;
-            gap: 20px;
+            padding: 0 10px;
+            gap: 15px;
             color: #10b981;
-            border-bottom: 1px solid #334155;
+            border-bottom: 1px solid #334;
             flex-shrink: 0;
-            z-index: 1000;
         }
-
-        #app-body {
+        #content {
             display: flex;
             flex: 1;
-            overflow: hidden;
+            min-height: 0;
         }
-
-        /* サイドバー */
         #sidebar {
             width: 320px;
-            background: var(--sidebar-bg);
-            padding: 20px;
+            background: var(--side-bg);
+            padding: 15px;
             display: flex;
             flex-direction: column;
-            gap: 15px;
-            box-shadow: 2px 0 15px rgba(0,0,0,0.5);
-            z-index: 100;
+            gap: 12px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+            z-index: 10;
             overflow-y: auto;
+            flex-shrink: 0;
         }
-
-        .ui-item { display: flex; flex-direction: column; gap: 5px; }
-        .label-row { display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; }
-        .sub-val { color: var(--text-dim); font-weight: normal; }
-
-        select {
-            background: var(--panel-bg);
-            color: #fff;
-            border: 1px solid #334155;
-            padding: 10px;
-            border-radius: 6px;
-            font-size: 13px;
+        #viewport {
+            flex: 1;
+            background: radial-gradient(circle at center, #1e293b 0%, #0b0f1a 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
         }
-
-        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        
+        canvas {
+            cursor: crosshair;
+            touch-action: none;
+            max-width: 95%;
+            max-height: 95%;
+            image-rendering: auto;
+        }
+        .ui-label { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin-bottom: 4px; }
+        .dim { color: var(--text-dim); font-weight: normal; }
+        select, input[type="range"] { width: 100%; background: var(--panel-bg); color: #fff; border: 1px solid #334; border-radius: 4px; padding: 8px; }
+        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         button {
-            padding: 12px 5px;
+            padding: 10px;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             background: #334155;
             color: #fff;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
             cursor: pointer;
-            transition: 0.1s;
         }
-        button:hover { filter: brightness(1.2); }
-        button.active-add { background: var(--accent-blue); box-shadow: 0 0 10px rgba(59, 130, 246, 0.4); }
-        button.active-del { background: var(--accent-red); box-shadow: 0 0 10px rgba(204, 51, 68, 0.4); }
-        
-        .purple-grad { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); margin-top: 5px; }
-        .reset-btn { background: #2d3748; color: var(--text-dim); border: 1px solid #4a5568; }
-
-        /* 統計カード */
-        .stats-area { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; padding-top: 15px; }
+        button.active-add { background: var(--accent); }
+        button.active-del { background: var(--danger); }
+        .btn-purple { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); margin-top: 5px; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
         .stat-card {
             background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #2d3748;
+        }
+        .stat-num { display: block; font-family: monospace; font-size: 14px; margin-top: 4px; color: #fff; }
+        
+        @media (max-width: 768px) {
+            #content { flex-direction: column; }
+            #sidebar { width: 100%; height: auto; max-height: 45%; order: 2; }
+            #viewport { order: 1; flex: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <span>SYSTEM: STABLE</span>
+    <span style="color:#fbbf24">VER: v1.1.0</span>
+    <span id="fps-lab">FPS: 60</span>
+</div>
+
+<div id="content">
+    <div id="sidebar">
+        <div class="ui-item">
+            <div class="ui-label">ヤング率 E <span class="dim" id="e-val">200 GPa-like</span></div>
+            <input type="range" id="e-slider" min="10" max="500" value="200">
+        </div>
+        <div class="ui-item">
+            <div class="ui-label">メッシュ <span class="dim">40 x 12</span></div>
+            <select><option>高精細 40 x 12</option></select>
+        </div>
+        <div class="ui-item">
+            <div class="ui-label">形状プリセット <span class="dim">手描き編集</span></div>
+            <select><option>手描き編集</option></select>
+        </div>
+        <div class="btn-row">
+            <button id="add-btn" class="active-add">描いて材料を追加</button>
+            <button id="del-btn">削って穴にする</button>
+        </div>
+        <button style="background: #1a2233; color: #4a5568; cursor: default;">プリセット形状を適用</button>
+        <button class="btn-purple" id="kr-btn">解いている行列 Kr を可視化</button>
+        <button id="reset-btn" style="background:#2d3748; color:#94a3b8; border:1px solid #4a5568;">初期値に戻す</button>
+        
+        <div class="stats-grid">
+            <div class="stat-card"><span class="dim" style="font-size:9px">最大変位</span><span id="res-d" class="stat-num">0.0000</span></div>
+            <div class="stat-card"><span class="dim" style="font-size:9px">最大応力</span><span id="res-s" class="stat-num">0.00e+0</span></div>
+            <div class="stat-card"><span class="dim" style="font-size:9px">総計算時間</span><span id="res-t" class="stat-num">--ms</span></div>
+            <div class="stat-card"><span class="dim" style="font-size:9px">ソルバー</span><span class="stat-num" style="font-size:11px">CG_linear</span></div>
+        </div>
+    </div>
+    <div id="viewport">
+        <canvas id="fem_c"></canvas>
+    </div>
+</div>
+
+<script>
+(function(){
+    const NX = 40, NY = 12, CW = 800, CH = 450;
+    let E = 200, mode = 'add', viz = false;
+    const canvas = document.getElementById('fem_c');
+    const ctx = canvas.getContext('2d');
+    canvas.width = CW; canvas.height = CH;
+
+    let grid = new Int8Array(NX * NY).fill(1);
+    let u = new Float64Array((NX + 1) * (NY + 1) * 2);
+    let stress = new Float64Array(NX * NY);
+
+    function solve() {
+        const t0 = performance.now();
+        const size = (NX+1)*(NY+1)*2;
+        const f = new Float64Array(size), r = new Float64Array(size), p = new Float64Array(size), Ap = new Float64Array(size);
+        for(let j=0; j<=NY; j++) f[(NX*(NY+1)+j)*2+1] = 0.2;
+
+        const mul = (vi, vo) => {
+            vo.fill(0);
+            const k = E * 0.05;
+            for(let i=0; i<NX; i++){
+                for(let j=0; j<NY; j++){
+                    if(grid[i*NY+j] === 0) continue;
+                    const ns = [i*(NY+1)+j, (i+1)*(NY+1)+j, (i+1)*(NY+1)+(j+1), i*(NY+1)+(j+1)];
+                    for(let a of ns){
+                        if(a%(NY+1) === 0 && Math.floor(a/(NY+1)) === 0) continue;
+                        for(let b of ns){
+                            const w = (a===b) ? 1.0 : -0.28;
+                            vo[a*2] += vi[b*2]*k*w; vo[a*2+1] += vi[b*2+1]*k*w;
+                        }
+                    }
+                }
+            }
+            for(let j=0; j<=NY; j++) { vo[j*2]=vi[j*2]; vo[j*2+1]=vi[j*2+1]; }
+        };
+
+        mul(u, Ap);
+        for(let i=0; i<size; i++) { r[i]=f[i]-Ap[i]; p[i]=r[i]; }
+        for(let it=0; it<35; it++){
+            mul(p, Ap);
+            let rtr=0, pAp=0;
+            for(let i=0; i<size; i++) { rtr+=r[i]*r[i]; pAp+=p[i]*Ap[i]; }
+            if(pAp < 1e-20) break;
+            const alpha = rtr/pAp;
+            let nrtr=0;
+            for(let i=0; i<size; i++){ u[i]+=alpha*p[i]; r[i]-=alpha*Ap[i]; nrtr+=r[i]*r[i]; }
+            if(nrtr < 1e-12) break;
+            const beta = nrtr/rtr;
+            for(let i=0; i<size; i++) p[i]=r[i]+beta*p[i];
+        }
+
+        let ms = 0;
+        for(let i=0; i<NX; i++){
+            for(let j=0; j<NY; j++){
+                if(grid[i*NY+j] === 0) { stress[i*NY+j]=0; continue; }
+                const n0=i*(NY+1)+j, n1=(i+1)*(NY+1)+j;
+                stress[i*NY+j] = Math.sqrt(Math.pow(u[n1*2]-u[n0*2],2)+Math.pow(u[n1*2+1]-u[n0*2+1],2))*E*42;
+                if(stress[i*NY+j]>ms) ms=stress[i*NY+j];
+            }
+        }
+        document.getElementById('res-t').textContent = (performance.now()-t0).toFixed(1)+"ms";
+        return ms;
+    }
+
+    function render() {
+        const ms = solve();
+        ctx.clearRect(0,0,CW,CH);
+        const ox=90, oy=110, st=15.5, sc=18;
+        document.getElementById('res-s').textContent = ms.toExponential(2);
+        let md=0; u.forEach(v=>{ if(Math.abs(v)>md) md=Math.abs(v); });
+        document.getElementById('res-d').textContent = md.toFixed(4);
+
+        for(let i=0; i<NX; i++){
+            for(let j=0; j<NY; j++){
+                if(grid[i*NY+j] === 0) continue;
+                const ns = [i*(NY+1)+j, (i+1)*(NY+1)+j, (i+1)*(NY+1)+(j+1), i*(NY+1)+(j+1)];
+                ctx.beginPath();
+                if(viz) ctx.fillStyle = `rgba(139,92,246,${0.4+Math.random()*0.3})`;
+                else {
+                    const r = Math.min(stress[i*NY+j]/ms, 1);
+                    ctx.fillStyle = `hsla(${(1-r)*240},80%,55%,0.85)`;
+                }
+                ns.forEach((idx, k) => {
+                    const px = ox + Math.floor(idx/(NY+1))*st + u[idx*2]*sc;
+                    const py = oy + (idx%(NY+1))*st + u[idx*2+1]*sc;
+                    if(k===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+                });
+                ctx.closePath(); ctx.fill();
+                ctx.strokeStyle = "rgba(255,255,255,0.06)"; ctx.stroke();
+            }
+        }
+        ctx.fillStyle="#fff"; for(let j=0; j<=NY; j++) ctx.fillRect(ox-8, oy+j*st-2, 4, 4);
+        ctx.strokeStyle="#fff"; ctx.lineWidth=2;
+        const ax=ox+NX*st+25, ay=oy+NY*st/2;
+        ctx.beginPath(); ctx.moveTo(ax,ay-25); ctx.lineTo(ax,ay+25); ctx.lineTo(ax-6,ay+18); ctx.moveTo(ax,ay+25); ctx.lineTo(ax+6,ay+18); ctx.stroke();
+        requestAnimationFrame(render);
+    }
+
+    const handler = (e) => {
+        if(e.buttons !== 1 && e.type !== 'touchstart') return;
+        const r = canvas.getBoundingClientRect();
+        const cx = e.touches ? e.touches[0].clientX : e.clientX;
+        const cy = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = (cx - r.left) * (CW/r.width), y = (cy - r.top) * (CH/r.height);
+        const gi = Math.floor((x-90)/15.5), gj = Math.floor((y-110)/15.5);
+        if(gi>=0 && gi<NX && gj>=0 && gj<NY) grid[gi*NY+gj] = (mode==='add'?1:0);
+    };
+    canvas.onmousedown = canvas.onmousemove = handler;
+    canvas.ontouchstart = canvas.ontouchmove = (e) => { if(e.touches.length===1) e.preventDefault(); handler(e); };
+
+    document.getElementById('add-btn').onclick = () => { mode='add'; document.getElementById('add-btn').className='active-add'; document.getElementById('del-btn').className=''; };
+    document.getElementById('del-btn').onclick = () => { mode='del'; document.getElementById('del-btn').className='active-del'; document.getElementById('add-btn').className=''; };
+    document.getElementById('e-slider').oninput = (e) => { E = e.target.value; document.getElementById('e-val').textContent = E+" GPa-like"; };
+    document.getElementById('reset-btn').onclick = () => { grid.fill(1); for(let i=8; i<12; i++) for(let j=NY-4; j<NY; j++) grid[i*NY+j]=0; for(let i=24; i<28; i++) for(let j=NY-2; j<NY; j++) grid[i*NY+j]=0; };
+    document.getElementById('kr-btn').onclick = () => { viz = !viz; };
+
+    let lt = performance.now();
+    function fps(t) { document.getElementById('fps-lab').textContent = "FPS: " + Math.round(1000/(t-lt)); lt=t; requestAnimationFrame(fps); }
+    
+    document.getElementById('reset-btn').click();
+    requestAnimationFrame(render);
+    requestAnimationFrame(fps);
+})();
+</script>
+</body>
+</html>
             padding: 12px;
             border-radius: 10px;
             border: 1px solid #2d3748;
