@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stress Sim v0.3.0</title>
+    <title>Stress Sim v0.4.0</title>
     <style>
         :root {
             --bg-deep: #0b0f1a;
@@ -17,10 +17,11 @@
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
         body {
             background-color: var(--bg-deep);
             color: var(--text-main);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: sans-serif;
             margin: 0;
             display: flex;
             flex-direction: column;
@@ -28,12 +29,12 @@
             overflow: hidden;
         }
 
-        /* 画面上部デバッグバー */
+        /* デバッグバー */
         #debug-bar {
             background: #000;
             height: 24px;
             font-size: 10px;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             display: flex;
             align-items: center;
             padding: 0 15px;
@@ -44,7 +45,7 @@
             z-index: 1000;
         }
 
-        #app-content {
+        #app-wrapper {
             display: flex;
             flex: 1;
             overflow: hidden;
@@ -52,54 +53,296 @@
 
         /* サイドバー */
         #sidebar {
-            width: 320px;
+            width: 300px;
             background: var(--sidebar-bg);
-            padding: 20px;
+            padding: 15px;
             display: flex;
             flex-direction: column;
             gap: 15px;
-            box-shadow: 2px 0 15px rgba(0,0,0,0.5);
+            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
             z-index: 100;
             overflow-y: auto;
         }
 
-        .label-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
-        .sub-text { color: var(--text-dim); }
+        .input-item { display: flex; flex-direction: column; gap: 4px; }
+        .label-box { display: flex; justify-content: space-between; font-size: 12px; }
+        .val-txt { color: var(--text-dim); }
 
         select {
             background: var(--card-bg);
-            color: white;
+            color: #fff;
             border: 1px solid #334155;
             padding: 8px;
             border-radius: 4px;
             font-size: 13px;
-            width: 100%;
-            outline: none;
         }
 
-        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        
         button {
             padding: 10px;
             border: none;
             border-radius: 6px;
             background: #334155;
-            color: white;
+            color: #fff;
             font-size: 12px;
             font-weight: bold;
             cursor: pointer;
             transition: 0.2s;
-            line-height: 1.2;
         }
-        button:hover { filter: brightness(1.2); }
-        button.active-blue { background: var(--accent-blue); box-shadow: 0 0 10px rgba(59, 130, 246, 0.4); }
-        button.active-red { background: var(--accent-red); box-shadow: 0 0 10px rgba(204, 51, 68, 0.4); }
+        button:hover { opacity: 0.8; }
+        button.active-add { background: var(--accent-blue); outline: 2px solid #60a5fa; }
+        button.active-del { background: var(--accent-red); outline: 2px solid #fca5a5; }
         
-        .purple-btn { 
-            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); 
-            margin-top: 5px;
+        .purple-btn { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); }
+        .reset-btn { background: #2d3748; color: var(--text-dim); border: 1px solid #4a5568; }
+
+        .stats-area { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
+        .stat-card {
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #2d3748;
         }
-        .reset-btn { 
-            background: #2d3748; 
+        .stat-num { display: block; font-family: monospace; font-size: 15px; margin-top: 4px; }
+
+        /* ビューポート */
+        #viewport {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at center, #1e293b 0%, #0b0f1a 100%);
+            position: relative;
+        }
+        canvas {
+            max-width: 95%;
+            max-height: 95%;
+            cursor: crosshair;
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="debug-bar">
+    <span>SYSTEM: STABLE</span>
+    <span style="color:#fbbf24">VER: v0.4.0</span>
+    <span>ENGINE: FEM_CORE_V2</span>
+    <span>STATUS: <span id="db-status">OK</span></span>
+    <span>FPS: <span id="db-fps">--</span></span>
+</div>
+
+<div id="app-wrapper">
+    <div id="sidebar">
+        <div class="input-item">
+            <div class="label-box">ヤング率 E <span class="val-txt" id="e-disp">200 GPa-like</span></div>
+            <input type="range" id="e-slider" min="10" max="500" value="200">
+        </div>
+
+        <div class="input-item">
+            <div class="label-box">メッシュ <span class="val-txt">40 x 12</span></div>
+            <select><option>高精細 40 x 12</option></select>
+        </div>
+
+        <div class="input-item">
+            <div class="label-box">形状プリセット <span class="val-txt">手描き編集</span></div>
+            <select><option>手描き編集</option></select>
+        </div>
+
+        <div class="btn-row">
+            <button id="mode-add" class="active-add">描いて材料を追加</button>
+            <button id="mode-del">削って穴にする</button>
+        </div>
+
+        <button style="color:#4a5568; background:#222; cursor:not-allowed;">プリセット形状を適用</button>
+        <button class="purple-btn">解いている行列 Kr を可視化</button>
+        <button id="reset-btn" class="reset-btn">初期値に戻す</button>
+
+        <div class="stats-area">
+            <div class="stat-card">
+                <span class="val-txt" style="font-size:10px">最大変位</span>
+                <span id="st-disp" class="stat-num">0.0000</span>
+            </div>
+            <div class="stat-card">
+                <span class="val-txt" style="font-size:10px">最大応力</span>
+                <span id="st-stress" class="stat-num">0.00e+0</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="viewport">
+        <canvas id="femCanvas"></canvas>
+    </div>
+</div>
+
+<script>
+/**
+ * Stress Simulator v0.4.0
+ * 物理演算をさらに安定化させた決定版
+ */
+const NX = 40, NY = 12;
+const CW = 800, CH = 400;
+let E_val = 200;
+let drawMode = 'add';
+
+const canvas = document.getElementById('femCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = CW; canvas.height = CH;
+
+let grid = new Int8Array(NX * NY).fill(1);
+let u = new Float64Array((NX + 1) * (NY + 1) * 2);
+let stress = new Float64Array(NX * NY);
+
+function solve() {
+    const numNodes = (NX + 1) * (NY + 1);
+    const size = numNodes * 2;
+    const f = new Float64Array(size);
+    const r = new Float64Array(size);
+    const p = new Float64Array(size);
+    const Ap = new Float64Array(size);
+
+    // 右端荷重
+    const force = 0.12;
+    for (let j = 0; j <= NY; j++) {
+        f[(NX * (NY+1) + j) * 2 + 1] = force;
+    }
+
+    const multiplyA = (vin, vout) => {
+        vout.fill(0);
+        const k = E_val * 0.04;
+        for (let i = 0; i < NX; i++) {
+            for (let j = 0; j < NY; j++) {
+                if (grid[i * NY + j] === 0) continue;
+                
+                const n = [
+                    i*(NY+1)+j, (i+1)*(NY+1)+j, (i+1)*(NY+1)+(j+1), i*(NY+1)+(j+1)
+                ];
+
+                for(let a of n) {
+                    if (a % (NY+1) === 0 && Math.floor(a/(NY+1)) === 0) continue; // 左端固定
+                    for(let b of n) {
+                        const weight = (a === b) ? 1.0 : -0.25;
+                        vout[a * 2]     += vin[b * 2] * k * weight;
+                        vout[a * 2 + 1] += vin[b * 2 + 1] * k * weight;
+                    }
+                }
+            }
+        }
+        for(let j=0; j<=NY; j++) { vout[j*2] = vin[j*2]; vout[j*2+1] = vin[j*2+1]; }
+    };
+
+    multiplyA(u, Ap);
+    for(let i=0; i<size; i++) { r[i] = f[i] - Ap[i]; p[i] = r[i]; }
+
+    for(let iter=0; iter<35; iter++) {
+        multiplyA(p, Ap);
+        let rtr = 0, pAp = 0;
+        for(let i=0; i<size; i++) { rtr += r[i]*r[i]; pAp += p[i]*Ap[i]; }
+        if(pAp < 1e-16) break;
+        const alpha = rtr / pAp;
+        let nrtr = 0;
+        for(let i=0; i<size; i++) { u[i] += alpha*p[i]; r[i] -= alpha*Ap[i]; nrtr += r[i]*r[i]; }
+        if(nrtr < 1e-10) break;
+        const beta = nrtr / rtr;
+        for(let i=0; i<size; i++) p[i] = r[i] + beta*p[i];
+    }
+
+    let maxS = 0;
+    for(let i=0; i<NX; i++) {
+        for(let j=0; j<NY; j++) {
+            if(grid[i*NY+j] === 0) { stress[i*NY+j] = 0; continue; }
+            const n0 = i*(NY+1)+j, n1 = (i+1)*(NY+1)+j;
+            const s = Math.sqrt(Math.pow(u[n1*2]-u[n0*2], 2) + Math.pow(u[n1*2+1]-u[n0*2+1], 2)) * E_val * 40;
+            stress[i*NY+j] = s;
+            if(s > maxS) maxS = s;
+        }
+    }
+    return maxS;
+}
+
+function getC(v, max) {
+    if(max <= 0) return '#3b82f6';
+    const r = Math.min(v/max, 1.0);
+    return `hsla(${(1.0-r)*240}, 80%, 50%, 0.85)`;
+}
+
+let last = 0;
+function draw(now) {
+    if(now - last > 16) {
+        document.getElementById('db-fps').textContent = Math.round(1000/(now-last));
+        last = now;
+    }
+
+    const maxS = solve();
+    ctx.clearRect(0, 0, CW, CH);
+
+    const step = 15, ox = 80, oy = 100, sc = 20.0;
+
+    document.getElementById('st-stress').textContent = maxS.toExponential(2);
+    let maxD = 0; u.forEach(v => { if(Math.abs(v)>maxD) maxD = Math.abs(v); });
+    document.getElementById('st-disp').textContent = maxD.toFixed(4);
+
+    for(let i=0; i<NX; i++) {
+        for(let j=0; j<NY; j++) {
+            if(grid[i*NY+j] === 0) continue;
+            const ns = [i*(NY+1)+j, (i+1)*(NY+1)+j, (i+1)*(NY+1)+(j+1), i*(NY+1)+(j+1)];
+            ctx.beginPath();
+            ctx.fillStyle = getC(stress[i*NY+j], maxS);
+            ns.forEach((idx, k) => {
+                const px = ox + Math.floor(idx/(NY+1))*step + u[idx*2]*sc;
+                const py = oy + (idx%(NY+1))*step + u[idx*2+1]*sc;
+                if(k===0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            });
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.05)"; ctx.stroke();
+        }
+    }
+
+    ctx.fillStyle = "#fff";
+    for(let j=0; j<=NY; j++) ctx.fillRect(ox-8, oy+j*step-2, 4, 4);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+    const ax = ox + NX*step + 20, ay = oy + NY*step/2;
+    ctx.beginPath(); ctx.moveTo(ax, ay-20); ctx.lineTo(ax, ay+20); ctx.lineTo(ax-5, ay+15); ctx.moveTo(ax, ay+20); ctx.lineTo(ax+5, ay+15); ctx.stroke();
+
+    requestAnimationFrame(draw);
+}
+
+const input = (e) => {
+    if(e.buttons !== 1 && e.type !== 'touchstart') return;
+    const r = canvas.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = (cx - r.left) * (CW/r.width), y = (cy - r.top) * (CH/r.height);
+    const gi = Math.floor((x-80)/15), gj = Math.floor((y-100)/15);
+    if(gi>=0 && gi<NX && gj>=0 && gj<NY) grid[gi*NY+gj] = (drawMode==='add'?1:0);
+};
+
+canvas.addEventListener('mousedown', input);
+canvas.addEventListener('mousemove', input);
+canvas.addEventListener('touchstart', (e)=>{e.preventDefault(); input(e);}, {passive:false});
+canvas.addEventListener('touchmove', (e)=>{e.preventDefault(); input(e);}, {passive:false});
+
+document.getElementById('mode-add').onclick = (e) => {
+    drawMode='add'; e.target.className='active-add'; document.getElementById('mode-del').className='';
+};
+document.getElementById('mode-del').onclick = (e) => {
+    drawMode='del'; e.target.className='active-del'; document.getElementById('mode-add').className='';
+};
+document.getElementById('e-slider').oninput = (e) => {
+    E_val = e.target.value; document.getElementById('e-disp').textContent = E_val + " GPa-like";
+};
+document.getElementById('reset-btn').onclick = () => {
+    grid.fill(1);
+    for(let i=8; i<12; i++) for(let j=NY-4; j<NY; j++) grid[i*NY+j]=0;
+    for(let i=25; i<28; i++) for(let j=NY-2; j<NY; j++) grid[i*NY+j]=0;
+};
+
+document.getElementById('reset-btn').click();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
             color: var(--text-dim); 
             border: 1px solid #4a5568; 
         }
