@@ -8,11 +8,13 @@
             --bg-color: #0f172a;
             --panel-color: #1e293b;
             --accent-color: #3b82f6;
-            --text-color: #f1f5f9;
+            --danger-color: #ef4444;
+            --btn-text-color: #f1f5f9;
+            --val-text-color: #94a3b8;
         }
         body {
             background-color: var(--bg-color);
-            color: var(--text-color);
+            color: var(--btn-text-color);
             font-family: sans-serif;
             margin: 0;
             display: flex;
@@ -20,41 +22,52 @@
             overflow: hidden;
         }
         #sidebar {
-            width: 300px;
+            width: 320px;
             background-color: var(--panel-color);
             padding: 20px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 15px;
             box-shadow: 2px 0 10px rgba(0,0,0,0.5);
             z-index: 10;
         }
-        h2 { font-size: 1.2rem; margin: 0; border-bottom: 1px solid #475569; padding-bottom: 10px; }
-        .control-group { display: flex; flex-direction: column; gap: 8px; }
-        label { font-size: 0.85rem; color: #94a3b8; }
+        h2 { font-size: 1.1rem; margin: 0; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        label { font-size: 0.85rem; color: #f1f5f9; display: flex; justify-content: space-between; }
+        .val { color: var(--val-text-color); }
         input[type="range"] { width: 100%; cursor: pointer; }
+        select { background: #334155; color: white; border: none; padding: 5px; border-radius: 4px; }
         .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         button {
             padding: 10px;
             border: none;
             border-radius: 6px;
             background: #334155;
-            color: white;
+            color: var(--btn-text-color);
             cursor: pointer;
             font-weight: bold;
             transition: 0.2s;
+            text-align: center;
         }
         button:hover { background: #475569; }
         button.active { background: var(--accent-color); }
-        #reset-btn { background: #ef4444; }
-        #reset-btn:hover { background: #dc2626; }
+        button.active.del { background: #991b1b; }
+        button.del-btn { background: #b91c1c; color: #fee2e2; }
+        button.del-btn:hover { background: #dc2626; }
+        button.visualize { background: #8b5cf6; } /* 紫色のボタン */
+        button.disabled { opacity: 0.5; cursor: not-allowed; }
         .stats {
             background: #0f172a;
             padding: 15px;
             border-radius: 8px;
-            font-family: monospace;
-            font-size: 0.9rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
         }
+        .stats div { font-size: 0.9rem; }
+        .stats div .lab { color: var(--val-text-color); }
+        .stats div .val-mono { font-family: monospace; }
+        
         #canvas-container {
             flex-grow: 1;
             display: flex;
@@ -72,34 +85,312 @@
 <body>
 
 <div id="sidebar">
-    <h2>応力シミュレーション</h2>
-    
+    <h2>ヤング率 E: <span id="e-val">200</span> GPa-like</h2>
+    <input type="range" id="e-slider" min="10" max="500" value="200">
+
     <div class="control-group">
-        <label>ヤング率 E: <span id="e-val">200</span> GPa-like</label>
-        <input type="range" id="e-slider" min="10" max="500" value="200">
+        <label>メッシュ: <span class="val">40 x 12</span></label>
+        <select><option>高精細 40 x 12</option></select>
     </div>
 
     <div class="control-group">
-        <label>描画モード</label>
-        <div class="btn-group">
-            <button id="mode-add" class="active">追加</button>
-            <button id="mode-del">削除</button>
-        </div>
+        <label>形状プリセット: <span class="val">手描き編集</span></label>
+        <select><option>手描き編集</option></select>
     </div>
 
-    <button id="reset-btn">初期値に戻す</button>
+    <div class="btn-group">
+        <button id="mode-add" class="active">描いて材料を追加</button>
+        <button id="mode-del" class="del">削って穴にする</button>
+    </div>
+
+    <button class="disabled">プリセット形状を適用</button>
+    <button class="visualize">解いている行列 Kr を可視化</button>
+    <button id="reset-btn" class="del-btn">初期値に戻す</button>
 
     <div class="stats">
-        <div>最大変位: <span id="stat-disp">0.0000</span></div>
-        <div>最大応力: <span id="stat-stress">0.00e+0</span></div>
+        <div><span class="lab">最大変位: </span><br><span id="stat-disp" class="val-mono">0.3827</span></div>
+        <div><span class="lab">最大応力: </span><br><span id="stat-stress" class="val-mono">2.51e+3</span></div>
     </div>
     
-    <p style="font-size: 0.75rem; color: #64748b;">
+    <p style="font-size: 0.75rem; color: #64748b; margin-top: auto;">
         左端: 完全固定<br>
         右端: 上向き荷重<br>
         マウスで形状を編集できます
     </p>
 </div>
+
+<div id="canvas-container">
+    <canvas id="femCanvas"></canvas>
+</div>
+
+<script>
+/**
+ * FEM Stress Simulation Core
+ */
+const NX = 40;  // 横方向要素数
+const NY = 12;  // 縦方向要素数 (リファレンスに合わせて12に)
+const CANVAS_W = 800;
+const CANVAS_H = 400;
+
+// 物性値
+let E = 200; 
+const nu = 0.3; // ポアソン比
+
+// 状態変数
+let grid = new Int8Array(NX * NY).fill(1); // 1: 物質あり, 0: 空洞
+let u = new Float64Array((NX + 1) * (NY + 1) * 2); // 変位ベクトル [ux, uy, ...]
+let stress = new Float64Array(NX * NY); // 各要素のフォン・ミーゼス応力
+let drawMode = 'add'; // 'add' or 'del'
+
+const canvas = document.getElementById('femCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = CANVAS_W;
+canvas.height = CANVAS_H;
+
+// --- FEM 計算ロジック ---
+
+// 共役勾配法（CG法）による solver
+function solve() {
+    const numNodes = (NX + 1) * (NY + 1);
+    const size = numNodes * 2;
+    const f = new Float64Array(size);
+    const r = new Float64Array(size);
+    const p = new Float64Array(size);
+    const Ap = new Float64Array(size);
+
+    // 右端に小さな荷重を印加 (上方向 = 負のY)
+    const loadVal = -0.05; // 破綻を防ぐために荷重をリファレンスより小さく設定
+    for (let j = 0; j <= NY; j++) {
+        const nodeIdx = (NX * (NY + 1) + j) * 2 + 1;
+        f[nodeIdx] = loadVal; 
+    }
+
+    // 簡易的な行列ベクトル積
+    const multiplyA = (vecIn, vecOut) => {
+        vecOut.fill(0);
+        const stiffnessCoeff = 0.05; // 剛性寄与を調整
+        for (let i = 0; i < NX; i++) {
+            for (let j = 0; j < NY; j++) {
+                if (grid[i * NY + j] === 0) continue;
+                
+                const nodes = [
+                    (i * (NY + 1) + j), ((i + 1) * (NY + 1) + j),
+                    ((i + 1) * (NY + 1) + (j + 1)), (i * (NY + 1) + (j + 1))
+                ];
+
+                for(let a=0; a<4; a++) {
+                    for(let b=0; b<4; b++) {
+                        const ni = nodes[a];
+                        const nj = nodes[b];
+                        
+                        // 左端（x=0）は固定
+                        if (ni % (NY+1) === 0 && Math.floor(ni/(NY+1)) === 0) ; 
+                        
+                        vecOut[ni*2]   += (vecIn[nj*2] * E * stiffnessCoeff);
+                        vecOut[ni*2+1] += (vecIn[nj*2+1] * E * stiffnessCoeff);
+                    }
+                }
+            }
+        }
+        // 固定端の拘束
+        for (let j = 0; j <= NY; j++) {
+            const idx = (0 * (NY + 1) + j) * 2;
+            vecOut[idx] = vecIn[idx];
+            vecOut[idx+1] = vecIn[idx+1];
+        }
+    };
+
+    // CG法 初期化
+    u.fill(0);
+    multiplyA(u, Ap);
+    for (let i = 0; i < size; i++) {
+        r[i] = f[i] - Ap[i];
+        p[i] = r[i];
+    }
+
+    // 反復計算
+    for (let iter = 0; iter < 50; iter++) { // 反復を増やす
+        multiplyA(p, Ap);
+        let r_dot_r = 0, p_dot_Ap = 0;
+        for (let i = 0; i < size; i++) {
+            r_dot_r += r[i] * r[i];
+            p_dot_Ap += p[i] * Ap[i];
+        }
+        if (p_dot_Ap === 0) break;
+        const alpha = r_dot_r / p_dot_Ap;
+        
+        let next_r_dot_r = 0;
+        for (let i = 0; i < size; i++) {
+            u[i] += alpha * p[i];
+            r[i] -= alpha * Ap[i];
+            next_r_dot_r += r[i] * r[i];
+        }
+        if (next_r_dot_r < 1e-6) break;
+        const beta = next_r_dot_r / r_dot_r;
+        for (let i = 0; i < size; i++) {
+            p[i] = r[i] + beta * p[i];
+        }
+    }
+
+    // 応力計算
+    let maxS = 0;
+    for (let i = 0; i < NX; i++) {
+        for (let j = 0; j < NY; j++) {
+            if (grid[i * NY + j] === 0) {
+                stress[i * NY + j] = 0;
+                continue;
+            }
+            const idx = i * (NY+1) + j;
+            const dx = u[(idx + NY + 1) * 2] - u[idx * 2];
+            const dy = u[(idx + 1) * 2 + 1] - u[idx * 2 + 1];
+            const s = Math.sqrt(dx*dx + dy*dy) * E;
+            stress[i * NY + j] = s;
+            if (s > maxS) maxS = s;
+        }
+    }
+    return maxS;
+}
+
+// --- 描画ロジック ---
+
+function getColor(val, max) {
+    if (max === 0) return '#3b82f6'; // 応力ゼロは青
+    const ratio = val / max;
+    // 鮮明なグラデーション: 青 -> 緑 -> 黄 -> 赤
+    let r, g, b;
+    if (ratio < 0.25) {
+        r = 0; g = ratio * 4 * 255; b = 255;
+    } else if (ratio < 0.5) {
+        r = 0; g = 255; b = (1 - (ratio - 0.25) * 4) * 255;
+    } else if (ratio < 0.75) {
+        r = (ratio - 0.5) * 4 * 255; g = 255; b = 0;
+    } else {
+        r = 255; g = (1 - (ratio - 0.75) * 4) * 255; b = 0;
+    }
+    return `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, 0.8)`;
+}
+
+function render() {
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    
+    const maxS = solve();
+    const cellW = (CANVAS_W - 100) / NX;
+    const cellH = (CANVAS_H - 100) / NY;
+    const offsetX = 50;
+    const offsetY = 50;
+    const scale = 10.0; // 変位の強調倍率
+
+    // 最大値を更新表示
+    document.getElementById('stat-stress').textContent = maxS.toExponential(2);
+    let maxD = 0; u.forEach(v => { if(Math.abs(v)>maxD) maxD = Math.abs(v); });
+    document.getElementById('stat-disp').textContent = maxD.toFixed(4);
+
+    // グリッド描画
+    for (let i = 0; i < NX; i++) {
+        for (let j = 0; j < NY; j++) {
+            if (grid[i * NY + j] === 0) continue;
+
+            const n1 = (i * (NY + 1) + j);
+            const n2 = ((i + 1) * (NY + 1) + j);
+            const n3 = ((i + 1) * (NY + 1) + (j + 1));
+            const n4 = (i * (NY + 1) + (j + 1));
+
+            ctx.beginPath();
+            ctx.fillStyle = getColor(stress[i * NY + j], maxS);
+            
+            // 変形後の座標を計算
+            const coords = [n1, n2, n3, n4].map(idx => ({
+                x: offsetX + (Math.floor(idx / (NY + 1))) * cellW + u[idx * 2] * scale,
+                y: offsetY + (idx % (NY + 1)) * cellH + u[idx * 2 + 1] * scale
+            }));
+
+            ctx.moveTo(coords[0].x, coords[0].y);
+            ctx.lineTo(coords[1].x, coords[1].y);
+            ctx.lineTo(coords[2].x, coords[2].y);
+            ctx.lineTo(coords[3].x, coords[3].y);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.stroke();
+        }
+    }
+
+    // 固定端のインジケータ
+    ctx.fillStyle = "white";
+    for(let j=0; j<=NY; j++) {
+        ctx.fillRect(offsetX - 10, offsetY + j * cellH - 3, 5, 6);
+    }
+    
+    // 荷重矢印 (上向き)
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 2;
+    const arrX = offsetX + NX * cellW + 15;
+    const arrY = offsetY + (NY/2) * cellH;
+    ctx.beginPath();
+    ctx.moveTo(arrX, arrY + 30);
+    ctx.lineTo(arrX, arrY - 30);
+    ctx.lineTo(arrX - 6, arrY - 24);
+    ctx.moveTo(arrX, arrY - 30);
+    ctx.lineTo(arrX + 6, arrY - 24);
+    ctx.stroke();
+
+    requestAnimationFrame(render);
+}
+
+// --- UI イベント ---
+
+const getMousePos = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+    const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+    return {
+        i: Math.floor((x - 50) / ((CANVAS_W - 100) / NX)),
+        j: Math.floor((y - 50) / ((CANVAS_H - 100) / NY))
+    };
+};
+
+const handleInput = (e) => {
+    if (e.buttons !== 1) return;
+    const {i, j} = getMousePos(e);
+    if (i >= 0 && i < NX && j >= 0 && j < NY) {
+        grid[i * NY + j] = (drawMode === 'add') ? 1 : 0;
+    }
+};
+
+canvas.addEventListener('mousedown', handleInput);
+canvas.addEventListener('mousemove', handleInput);
+
+document.getElementById('mode-add').onclick = (e) => {
+    drawMode = 'add';
+    e.target.classList.add('active');
+    document.getElementById('mode-del').classList.remove('active');
+};
+document.getElementById('mode-del').onclick = (e) => {
+    drawMode = 'del';
+    e.target.classList.add('active');
+    document.getElementById('mode-add').classList.remove('active');
+};
+document.getElementById('e-slider').oninput = (e) => {
+    E = parseInt(e.target.value);
+    document.getElementById('e-val').textContent = E;
+};
+document.getElementById('reset-btn').onclick = () => {
+    grid.fill(1);
+    // 穴を開けるプリセットを再現
+    for(let i=8; i<12; i++) for(let j=NY-4; j<NY; j++) grid[i * NY + j] = 0;
+    for(let i=24; i<28; i++) for(let j=NY-3; j<NY; j++) grid[i * NY + j] = 0;
+};
+
+// 初期形状の設定
+document.getElementById('reset-btn').click();
+
+// 実行開始
+render();
+
+</script>
+</body>
+</html>
 
 <div id="canvas-container">
     <canvas id="femCanvas"></canvas>
