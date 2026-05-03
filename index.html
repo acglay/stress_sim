@@ -2,104 +2,373 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Web FEM Stress Simulator</title>
+    <title>Stress Sim v0.1.0</title>
     <style>
         :root {
-            --bg-color: #0f172a;
-            --panel-color: #1e293b;
-            --accent-color: #3b82f6;
-            --danger-color: #ef4444;
-            --btn-text-color: #f1f5f9;
-            --val-text-color: #94a3b8;
+            --bg-deep: #0b0f1a;
+            --sidebar-bg: #161c2d;
+            --card-bg: #1e253a;
+            --accent-blue: #3b82f6;
+            --accent-red: #ef4444;
+            --accent-purple: #8b5cf6;
+            --text-main: #f1f5f9;
+            --text-dim: #94a3b8;
         }
+
         body {
-            background-color: var(--bg-color);
-            color: var(--btn-text-color);
-            font-family: sans-serif;
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
             display: flex;
+            flex-direction: column;
             height: 100vh;
             overflow: hidden;
         }
+
+        /* --- デバッグバー --- */
+        #debug-bar {
+            background: rgba(0, 0, 0, 0.8);
+            height: 24px;
+            font-size: 11px;
+            font-family: monospace;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            gap: 20px;
+            border-bottom: 1px solid #334155;
+            color: #10b981;
+            z-index: 100;
+        }
+
+        #main-container {
+            display: flex;
+            flex-grow: 1;
+        }
+
+        /* --- サイドバー --- */
         #sidebar {
             width: 320px;
-            background-color: var(--panel-color);
+            background-color: var(--sidebar-bg);
             padding: 20px;
             display: flex;
             flex-direction: column;
-            gap: 15px;
-            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
-            z-index: 10;
+            gap: 16px;
+            box-shadow: 2px 0 15px rgba(0,0,0,0.4);
+            overflow-y: auto;
         }
-        h2 { font-size: 1.1rem; margin: 0; }
-        .control-group { display: flex; flex-direction: column; gap: 5px; }
-        label { font-size: 0.85rem; color: #f1f5f9; display: flex; justify-content: space-between; }
-        .val { color: var(--val-text-color); }
-        input[type="range"] { width: 100%; cursor: pointer; }
-        select { background: #334155; color: white; border: none; padding: 5px; border-radius: 4px; }
-        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        button {
+
+        .section-label { font-size: 13px; color: var(--text-dim); margin-bottom: 4px; }
+        .val-display { float: right; color: var(--text-main); }
+
+        select, button {
+            width: 100%;
             padding: 10px;
-            border: none;
             border-radius: 6px;
-            background: #334155;
-            color: var(--btn-text-color);
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
             cursor: pointer;
-            font-weight: bold;
             transition: 0.2s;
-            text-align: center;
         }
-        button:hover { background: #475569; }
-        button.active { background: var(--accent-color); }
-        button.active.del { background: #991b1b; }
-        button.del-btn { background: #b91c1c; color: #fee2e2; }
-        button.del-btn:hover { background: #dc2626; }
-        button.visualize { background: #8b5cf6; } /* 紫色のボタン */
-        button.disabled { opacity: 0.5; cursor: not-allowed; }
-        .stats {
-            background: #0f172a;
-            padding: 15px;
-            border-radius: 8px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-        .stats div { font-size: 0.9rem; }
-        .stats div .lab { color: var(--val-text-color); }
-        .stats div .val-mono { font-family: monospace; }
+
+        select { background: var(--card-bg); color: white; appearance: none; }
+
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         
-        #canvas-container {
+        button { background: #334155; color: white; }
+        button:hover { opacity: 0.9; }
+        button.active { background: var(--accent-blue); outline: 2px solid #60a5fa; }
+        button.active.del { background: #991b1b; outline: 2px solid #f87171; }
+        
+        button.kr-btn { background: var(--accent-purple); margin-top: 5px; }
+        button.reset-btn { background: transparent; border: 1px solid #475569; color: var(--text-dim); }
+        button.reset-btn:hover { background: #334155; color: white; }
+
+        .stat-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat-card {
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+        .stat-val { font-family: monospace; font-size: 16px; display: block; margin-top: 4px; }
+
+        /* --- キャンバス --- */
+        #viewport {
             flex-grow: 1;
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
+            background-image: 
+                radial-gradient(circle at 50% 50%, #1e293b 0%, #0b0f1a 100%);
         }
-        canvas {
-            cursor: crosshair;
-            max-width: 95%;
-            max-height: 95%;
+        canvas { cursor: crosshair; }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #334155;
+            border-radius: 5px;
+            outline: none;
         }
     </style>
 </head>
 <body>
 
-<div id="sidebar">
-    <h2>ヤング率 E: <span id="e-val">200</span> GPa-like</h2>
-    <input type="range" id="e-slider" min="10" max="500" value="200">
+<div id="debug-bar">
+    <span>SYSTEM: READY</span>
+    <span>VER: v0.1.0 (Major Refactor)</span>
+    <span>ENGINE: FEM_LINEAR_CG</span>
+    <span>STATUS: <span id="debug-status" style="color:#fbbf24">STABLE</span></span>
+    <span>FPS: <span id="fps-val">60</span></span>
+</div>
 
-    <div class="control-group">
-        <label>メッシュ: <span class="val">40 x 12</span></label>
-        <select><option>高精細 40 x 12</option></select>
+<div id="main-container">
+    <div id="sidebar">
+        <div>
+            <div class="section-label">ヤング率 E <span class="val-display" id="e-label">200 GPa-like</span></div>
+            <input type="range" id="e-slider" min="10" max="500" value="200">
+        </div>
+
+        <div>
+            <div class="section-label">メッシュ</div>
+            <select><option>高精細 40 x 12</option></select>
+        </div>
+
+        <div>
+            <div class="section-label">形状プリセット</div>
+            <select><option>手描き編集</option></select>
+        </div>
+
+        <div class="btn-grid">
+            <button id="mode-add" class="active">描いて材料を追加</button>
+            <button id="mode-del">削って穴にする</button>
+        </div>
+
+        <button style="opacity:0.5; cursor:not-allowed;">プリセット形状を適用</button>
+        <button class="kr-btn">解いている行列 Kr を可視化</button>
+        <button id="reset-btn" class="reset-btn">初期値に戻す</button>
+
+        <div class="stat-card-grid">
+            <div class="stat-card">
+                <span class="section-label">最大変位</span>
+                <span id="disp-val" class="stat-val">0.0000</span>
+            </div>
+            <div class="stat-card">
+                <span class="section-label">最大応力</span>
+                <span id="stress-val" class="stat-val">0.00e+0</span>
+            </div>
+        </div>
     </div>
 
-    <div class="control-group">
-        <label>形状プリセット: <span class="val">手描き編集</span></label>
-        <select><option>手描き編集</option></select>
+    <div id="viewport">
+        <canvas id="femCanvas"></canvas>
     </div>
+</div>
 
-    <div class="btn-group">
-        <button id="mode-add" class="active">描いて材料を追加</button>
+<script>
+/**
+ * Stress Simulator v0.1.0
+ */
+const NX = 40;
+const NY = 12;
+const CANVAS_W = 800;
+const CANVAS_H = 450;
+
+let E = 200;
+let grid = new Int8Array(NX * NY).fill(1);
+let u = new Float64Array((NX + 1) * (NY + 1) * 2); 
+let stress = new Float64Array(NX * NY);
+let drawMode = 'add';
+
+const canvas = document.getElementById('femCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = CANVAS_W;
+canvas.height = CANVAS_H;
+
+// --- FEM ソルバー (CG法) ---
+function solve() {
+    const numNodes = (NX + 1) * (NY + 1);
+    const size = numNodes * 2;
+    const f = new Float64Array(size);
+    const r = new Float64Array(size);
+    const p = new Float64Array(size);
+    const Ap = new Float64Array(size);
+
+    // 右端荷重 (先端荷重)
+    const loadY = -0.15; 
+    for (let j = 0; j <= NY; j++) {
+        f[(NX * (NY + 1) + j) * 2 + 1] = loadY;
+    }
+
+    const multiplyA = (vin, vout) => {
+        vout.fill(0);
+        for (let i = 0; i < NX; i++) {
+            for (let j = 0; j < NY; j++) {
+                if (grid[i * NY + j] === 0) continue;
+                
+                const idxs = [
+                    (i*(NY+1)+j), ((i+1)*(NY+1)+j), 
+                    ((i+1)*(NY+1)+(j+1)), (i*(NY+1)+(j+1))
+                ];
+
+                for(let a of idxs) {
+                    for(let b of idxs) {
+                        if (a % (NY+1) === 0 && Math.floor(a/(NY+1)) === 0) continue; 
+                        const stiff = (E * 0.08); 
+                        vout[a*2]   += vin[b*2] * stiff;
+                        vout[a*2+1] += vin[b*2+1] * stiff;
+                    }
+                }
+            }
+        }
+        // 境界条件の固定化
+        for(let j=0; j<=NY; j++) {
+            vout[j*2] = vin[j*2];
+            vout[j*2+1] = vin[j*2+1];
+        }
+    };
+
+    // CG初期化
+    multiplyA(u, Ap);
+    for(let i=0; i<size; i++) { r[i] = f[i] - Ap[i]; p[i] = r[i]; }
+
+    for(let iter=0; iter<40; iter++) {
+        multiplyA(p, Ap);
+        let rdotr = 0, pAp = 0;
+        for(let i=0; i<size; i++) { rdotr += r[i]*r[i]; pAp += p[i]*Ap[i]; }
+        if(pAp < 1e-10) break;
+        let alpha = rdotr / pAp;
+        let next_rdotr = 0;
+        for(let i=0; i<size; i++) {
+            u[i] += alpha * p[i];
+            r[i] -= alpha * Ap[i];
+            next_rdotr += r[i]*r[i];
+        }
+        if(next_rdotr < 1e-7) break;
+        let beta = next_rdotr / rdotr;
+        for(let i=0; i<size; i++) p[i] = r[i] + beta * p[i];
+    }
+
+    let maxS = 0;
+    for(let i=0; i<NX; i++) {
+        for(let j=0; j<NY; j++) {
+            if(grid[i*NY+j] === 0) { stress[i*NY+j] = 0; continue; }
+            const n0 = i*(NY+1)+j;
+            const n1 = (i+1)*(NY+1)+j;
+            const ds = Math.abs(u[n1*2+1] - u[n0*2+1]) + Math.abs(u[n1*2] - u[n0*2]);
+            stress[i*NY+j] = ds * E * 50;
+            if(stress[i*NY+j] > maxS) maxS = stress[i*NY+j];
+        }
+    }
+    return maxS;
+}
+
+// --- 描画 ---
+function getRainbowColor(v, max) {
+    if(max === 0) return '#1e293b';
+    const ratio = Math.min(v/max, 1.0);
+    const h = (1.0 - ratio) * 240;
+    return `hsla(${h}, 80%, 50%, 0.85)`;
+}
+
+let lastTime = 0;
+function render(time) {
+    const dt = time - lastTime;
+    lastTime = time;
+    document.getElementById('fps-val').textContent = Math.round(1000/dt);
+
+    const maxS = solve();
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+    const cw = 15, ch = 15;
+    const ox = 100, oy = 100;
+    const scale = 15.0;
+
+    // 数値更新
+    document.getElementById('stress-val').textContent = maxS.toExponential(2);
+    let maxD = 0; u.forEach(x => { if(Math.abs(x)>maxD) maxD = Math.abs(x); });
+    document.getElementById('disp-val').textContent = maxD.toFixed(4);
+
+    // グリッド描画
+    for(let i=0; i<NX; i++) {
+        for(let j=0; j<NY; j++) {
+            if(grid[i*NY+j] === 0) continue;
+            
+            const nodes = [
+                i*(NY+1)+j, (i+1)*(NY+1)+j, 
+                (i+1)*(NY+1)+(j+1), i*(NY+1)+(j+1)
+            ];
+
+            ctx.beginPath();
+            ctx.fillStyle = getRainbowColor(stress[i*NY+j], maxS);
+            
+            nodes.forEach((idx, k) => {
+                const nx = Math.floor(idx/(NY+1));
+                const ny = idx%(NY+1);
+                const px = ox + nx * cw + u[idx*2] * scale;
+                const py = oy + ny * ch + u[idx*2+1] * scale;
+                if(k === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            });
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.08)";
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+        }
+    }
+
+    // 装飾: 固定端
+    ctx.fillStyle = "white";
+    for(let j=0; j<=NY; j++) ctx.beginPath(), ctx.arc(ox-5, oy+j*ch, 2, 0, 7), ctx.fill();
+    // 装飾: 荷重矢印
+    ctx.strokeStyle = "white"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(ox+NX*cw+15, oy+NY*ch/2+20); ctx.lineTo(ox+NX*cw+15, oy+NY*ch/2-20);
+    ctx.lineTo(ox+NX*cw+10, oy+NY*ch/2-15); ctx.moveTo(ox+NX*cw+15, oy+NY*ch/2-20); ctx.lineTo(ox+NX*cw+20, oy+NY*ch/2-15);
+    ctx.stroke();
+
+    requestAnimationFrame(render);
+}
+
+// --- インタラクション ---
+const updateGrid = (e) => {
+    if(e.buttons !== 1) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+    const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+    const gi = Math.floor((x - 100) / 15);
+    const gj = Math.floor((y - 100) / 15);
+    if(gi >= 0 && gi < NX && gj >= 0 && gj < NY) {
+        grid[gi * NY + gj] = (drawMode === 'add' ? 1 : 0);
+    }
+};
+canvas.onmousedown = updateGrid;
+canvas.onmousemove = updateGrid;
+
+document.getElementById('mode-add').onclick = (e) => {
+    drawMode = 'add'; e.target.className = 'active'; document.getElementById('mode-del').className = '';
+};
+document.getElementById('mode-del').onclick = (e) => {
+    drawMode = 'del'; e.target.className = 'active del'; document.getElementById('mode-add').className = '';
+};
+document.getElementById('e-slider').oninput = (e) => {
+    E = e.target.value; document.getElementById('e-label').textContent = E + " GPa-like";
+};
+document.getElementById('reset-btn').onclick = () => {
+    grid.fill(1);
+    // 初期穴
+    for(let i=5; i<9; i++) for(let j=NY-4; j<NY; j++) grid[i*NY+j]=0;
+    for(let i=20; i<23; i++) for(let j=NY-3; j<NY; j++) grid[i*NY+j]=0;
+};
+
+document.getElementById('reset-btn').click();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
         <button id="mode-del" class="del">削って穴にする</button>
     </div>
 
