@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Web FEM Stress Simulator</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-color: #1e293b;
+            --accent-color: #3b82f6;
+            --text-color: #f1f5f9;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #sidebar {
+            width: 300px;
+            background-color: var(--panel-color);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        h2 { font-size: 1.2rem; margin: 0; border-bottom: 1px solid #475569; padding-bottom: 10px; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-size: 0.85rem; color: #94a3b8; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button {
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            background: #334155;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        button:hover { background: #475569; }
+        button.active { background: var(--accent-color); }
+        #reset-btn { background: #ef4444; }
+        #reset-btn:hover { background: #dc2626; }
+        .stats {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        #canvas-container {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        canvas {
+            cursor: crosshair;
+            max-width: 95%;
+            max-height: 95%;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>応力シミュレーション</h2>
+    
+    <div class="control-group">
+        <label>ヤング率 E: <span id="e-val">200</span> GPa-like</label>
+        <input type="range" id="e-slider" min="10" max="500" value="200">
+    </div>
+
+    <div class="control-group">
+        <label>描画モード</label>
+        <div class="btn-group">
+            <button id="mode-add" class="active">追加</button>
+            <button id="mode-del">削除</button>
+        </div>
+    </div>
+
+    <button id="reset-btn">初期値に戻す</button>
+
+    <div class="stats">
+        <div>最大変位: <span id="stat-disp">0.0000</span></div>
+        <div>最大応力: <span id="stat-stress">0.00e+0</span></div>
+    </div>
+    
+    <p style="font-size: 0.75rem; color: #64748b;">
+        左端: 完全固定<br>
+        右端: 上向き荷重<br>
+        マウスで形状を編集できます
+    </p>
+</div>
+
+<div id="canvas-container">
+    <canvas id="femCanvas"></canvas>
+</div>
+
+<script>
+/**
+ * FEM Stress Simulation Core
+ */
+const NX = 40;  // 横方向要素数
+const NY = 15;  // 縦方向要素数
+const CANVAS_W = 800;
+const CANVAS_H = 400;
+
+// 物性値
+let E = 200; 
+const nu = 0.3; // ポアソン比
+
+// 状態変数
+let grid = new Int8Array(NX * NY).fill(1); // 1: 物質あり, 0: 空洞
+let u = new Float64Array((NX + 1) * (NY + 1) * 2); // 変位ベクトル [ux, uy, ...]
+let stress = new Float64Array(NX * NY); // 各要素のフォン・ミーゼス応力
+let drawMode = 'add'; // 'add' or 'del'
+
+const canvas = document.getElementById('femCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = CANVAS_W;
+canvas.height = CANVAS_H;
+
+// --- FEM 計算ロジック ---
+
+// 平面応力状態の剛性マトリクス生成（単位厚さ）
+function getElementK(E_val) {
+    const k = new Float64Array(8 * 8);
+    const C = E_val / (1 - nu * nu);
+    // 簡易的な 4節点正方形要素の剛性行列（近似）
+    const b = 0.5; // 要素サイズに対する係数
+    // 本来は積分が必要だが、リアルタイム性を重視した簡易実装
+    // ここでは対角成分を強調したモデルを使用
+    for(let i=0; i<8; i++) k[i*8+i] = C * 0.5;
+    return k;
+}
+
+// 共役勾配法（CG法）による solver
+function solve() {
+    const numNodes = (NX + 1) * (NY + 1);
+    const size = numNodes * 2;
+    const f = new Float64Array(size);
+    const r = new Float64Array(size);
+    const p = new Float64Array(size);
+    const Ap = new Float64Array(size);
+
+    // 右端に荷重を印加 (上方向 = 負のY)
+    for (let j = 0; j <= NY; j++) {
+        const nodeIdx = (NX * (NY + 1) + j) * 2 + 1;
+        f[nodeIdx] = -10.0; 
+    }
+
+    // 固定境界条件（左端を0に固定）を考慮した行列ベクトル積
+    const multiplyA = (vecIn, vecOut) => {
+        vecOut.fill(0);
+        for (let i = 0; i < NX; i++) {
+            for (let j = 0; j < NY; j++) {
+                if (grid[i * NY + j] === 0) continue;
+                
+                // 要素内の節点インデックス
+                const nodes = [
+                    (i * (NY + 1) + j), ((i + 1) * (NY + 1) + j),
+                    ((i + 1) * (NY + 1) + (j + 1)), (i * (NY + 1) + (j + 1))
+                ];
+
+                // 簡易的な剛性寄与の加算
+                for(let a=0; a<4; a++) {
+                    for(let b=0; b<4; b++) {
+                        const ni = nodes[a];
+                        const nj = nodes[b];
+                        // 左端（x=0）は固定なので計算しない
+                        if (ni % (NY+1) === 0 && Math.floor(ni/(NY+1)) === 0) ; 
+                        
+                        vecOut[ni*2]   += (vecIn[nj*2] * E * 0.1);
+                        vecOut[ni*2+1] += (vecIn[nj*2+1] * E * 0.1);
+                    }
+                }
+            }
+        }
+        // 固定端の拘束
+        for (let j = 0; j <= NY; j++) {
+            const idx = (0 * (NY + 1) + j) * 2;
+            vecOut[idx] = vecIn[idx];
+            vecOut[idx+1] = vecIn[idx+1];
+        }
+    };
+
+    // CG法 初期化
+    u.fill(0);
+    multiplyA(u, Ap);
+    for (let i = 0; i < size; i++) {
+        r[i] = f[i] - Ap[i];
+        p[i] = r[i];
+    }
+
+    // 反復計算
+    for (let iter = 0; iter < 30; iter++) {
+        multiplyA(p, Ap);
+        let r_dot_r = 0, p_dot_Ap = 0;
+        for (let i = 0; i < size; i++) {
+            r_dot_r += r[i] * r[i];
+            p_dot_Ap += p[i] * Ap[i];
+        }
+        if (p_dot_Ap === 0) break;
+        const alpha = r_dot_r / p_dot_Ap;
+        
+        let next_r_dot_r = 0;
+        for (let i = 0; i < size; i++) {
+            u[i] += alpha * p[i];
+            r[i] -= alpha * Ap[i];
+            next_r_dot_r += r[i] * r[i];
+        }
+        if (next_r_dot_r < 1e-6) break;
+        const beta = next_r_dot_r / r_dot_r;
+        for (let i = 0; i < size; i++) {
+            p[i] = r[i] + beta * p[i];
+        }
+    }
+
+    // 応力計算（簡易：変位の勾配から算出）
+    let maxS = 0;
+    for (let i = 0; i < NX; i++) {
+        for (let j = 0; j < NY; j++) {
+            if (grid[i * NY + j] === 0) {
+                stress[i * NY + j] = 0;
+                continue;
+            }
+            const idx = i * (NY+1) + j;
+            const dx = u[(idx + NY + 1) * 2] - u[idx * 2];
+            const dy = u[(idx + 1) * 2 + 1] - u[idx * 2 + 1];
+            const s = Math.sqrt(dx*dx + dy*dy) * E;
+            stress[i * NY + j] = s;
+            if (s > maxS) maxS = s;
+        }
+    }
+    return maxS;
+}
+
+// --- 描画ロジック ---
+
+function getColor(val, max) {
+    if (max === 0) return '#3b82f6';
+    const ratio = val / max;
+    const hue = (1 - ratio) * 240; // 240 (Blue) to 0 (Red)
+    return `hsla(${hue}, 80%, 50%, 0.8)`;
+}
+
+function render() {
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    
+    const maxS = solve();
+    const cellW = (CANVAS_W - 100) / NX;
+    const cellH = (CANVAS_H - 100) / NY;
+    const offsetX = 50;
+    const offsetY = 50;
+    const scale = 5.0; // 変位の強調倍率
+
+    // 最大値を更新表示
+    document.getElementById('stat-stress').textContent = maxS.toExponential(2);
+    let maxD = 0; u.forEach(v => { if(Math.abs(v)>maxD) maxD = Math.abs(v); });
+    document.getElementById('stat-disp').textContent = maxD.toFixed(4);
+
+    // グリッド描画
+    for (let i = 0; i < NX; i++) {
+        for (let j = 0; j < NY; j++) {
+            if (grid[i * NY + j] === 0) continue;
+
+            const n1 = (i * (NY + 1) + j);
+            const n2 = ((i + 1) * (NY + 1) + j);
+            const n3 = ((i + 1) * (NY + 1) + (j + 1));
+            const n4 = (i * (NY + 1) + (j + 1));
+
+            ctx.beginPath();
+            ctx.fillStyle = getColor(stress[i * NY + j], maxS);
+            
+            // 変形後の座標を計算
+            const coords = [n1, n2, n3, n4].map(idx => ({
+                x: offsetX + (Math.floor(idx / (NY + 1))) * cellW + u[idx * 2] * scale,
+                y: offsetY + (idx % (NY + 1)) * cellH + u[idx * 2 + 1] * scale
+            }));
+
+            ctx.moveTo(coords[0].x, coords[0].y);
+            ctx.lineTo(coords[1].x, coords[1].y);
+            ctx.lineTo(coords[2].x, coords[2].y);
+            ctx.lineTo(coords[3].x, coords[3].y);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.stroke();
+        }
+    }
+
+    // 固定端のインジケータ
+    ctx.fillStyle = "white";
+    for(let j=0; j<=NY; j++) {
+        ctx.fillRect(offsetX - 5, offsetY + j * cellH - 2, 5, 4);
+    }
+    
+    // 荷重矢印
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 2;
+    const arrX = offsetX + NX * cellW + 10;
+    const arrY = offsetY + (NY/2) * cellH;
+    ctx.beginPath();
+    ctx.moveTo(arrX, arrY + 20);
+    ctx.lineTo(arrX, arrY - 20);
+    ctx.lineTo(arrX - 5, arrY - 15);
+    ctx.moveTo(arrX, arrY - 20);
+    ctx.lineTo(arrX + 5, arrY - 15);
+    ctx.stroke();
+
+    requestAnimationFrame(render);
+}
+
+// --- UI イベント ---
+
+const getMousePos = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+    const y = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+    return {
+        i: Math.floor((x - 50) / ((CANVAS_W - 100) / NX)),
+        j: Math.floor((y - 50) / ((CANVAS_H - 100) / NY))
+    };
+};
+
+const handleInput = (e) => {
+    if (e.buttons !== 1) return;
+    const {i, j} = getMousePos(e);
+    if (i >= 0 && i < NX && j >= 0 && j < NY) {
+        grid[i * NY + j] = (drawMode === 'add') ? 1 : 0;
+    }
+};
+
+canvas.addEventListener('mousedown', handleInput);
+canvas.addEventListener('mousemove', handleInput);
+
+document.getElementById('mode-add').onclick = (e) => {
+    drawMode = 'add';
+    e.target.classList.add('active');
+    document.getElementById('mode-del').classList.remove('active');
+};
+document.getElementById('mode-del').onclick = (e) => {
+    drawMode = 'del';
+    e.target.classList.add('active');
+    document.getElementById('mode-add').classList.remove('active');
+};
+document.getElementById('e-slider').oninput = (e) => {
+    E = parseInt(e.target.value);
+    document.getElementById('e-val').textContent = E;
+};
+document.getElementById('reset-btn').onclick = () => {
+    grid.fill(1);
+};
+
+// 実行開始
+render();
+
+</script>
+</body>
+</html>
+
