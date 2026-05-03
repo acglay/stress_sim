@@ -2,104 +2,344 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stress Sim v0.5.0</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Stress Sim v0.5.1</title>
     <style>
         :root {
-            --bg-dark: #0b0f1a;
+            --bg-color: #0b0f1a;
             --side-bg: #161c2d;
-            --panel-bg: #1e253a;
-            --accent-blue: #3b82f6;
-            --accent-red: #cc3344;
-            --accent-purple: #8b5cf6;
+            --btn-blue: #3b82f6;
+            --btn-red: #cc3344;
             --text-white: #f1f5f9;
-            --text-gray: #94a3b8;
+            --text-dim: #94a3b8;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
         body {
-            background-color: var(--bg-dark);
+            background-color: var(--bg-color);
             color: var(--text-white);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: sans-serif;
             height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
 
-        /* --- デバッグバー --- */
-        #debug-header {
+        /* ヘッダーバー */
+        #header-bar {
             background: #000;
             height: 26px;
             font-size: 10px;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             display: flex;
             align-items: center;
-            padding: 0 15px;
-            gap: 20px;
+            padding: 0 12px;
+            gap: 15px;
             color: #10b981;
             border-bottom: 1px solid #334155;
-            flex-shrink: 0;
             z-index: 1000;
         }
 
-        #main-layout {
+        #app-main {
             display: flex;
             flex: 1;
-            overflow: hidden;
+            width: 100%;
         }
 
-        /* --- サイドバー --- */
+        /* サイドバー */
         #sidebar {
-            width: 320px;
+            width: 300px;
             background: var(--side-bg);
-            padding: 20px;
+            padding: 15px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
-            box-shadow: 2px 0 15px rgba(0,0,0,0.5);
+            gap: 12px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.5);
             z-index: 100;
-            overflow-y: auto;
         }
 
-        .input-box { display: flex; flex-direction: column; gap: 6px; }
-        .label-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
-        .dim-text { color: var(--text-gray); font-weight: normal; }
+        .ui-group { display: flex; flex-direction: column; gap: 4px; }
+        .ui-label { display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; }
+        .ui-sub { color: var(--text-dim); font-weight: normal; }
 
         select {
-            background: var(--panel-bg);
+            background: #1e253a;
             color: #fff;
             border: 1px solid #334155;
-            padding: 10px;
-            border-radius: 6px;
-            font-size: 14px;
-            outline: none;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 13px;
         }
 
-        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         button {
-            padding: 12px 5px;
+            padding: 10px;
             border: none;
             border-radius: 6px;
             background: #334155;
             color: #fff;
-            font-size: 13px;
+            font-size: 11px;
             font-weight: bold;
             cursor: pointer;
-            transition: 0.2s;
-            line-height: 1.2;
         }
-        button:hover { filter: brightness(1.2); }
-        button.active-add { background: var(--accent-blue); outline: 2px solid #60a5fa; }
-        button.active-del { background: var(--accent-red); outline: 2px solid #f87171; }
-        
-        .btn-purple { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); margin-top: 5px; }
-        .btn-reset { background: #2d3748; color: var(--text-gray); border: 1px solid #4a5568; }
+        button.active-add { background: var(--btn-blue); outline: 2px solid #60a5fa; }
+        button.active-del { background: var(--btn-red); outline: 2px solid #f87171; }
+        .purple-btn { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); }
 
-        /* 統計カード */
-        .stats-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: auto; }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
         .stat-card {
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #2d3748;
+        }
+        .stat-val { display: block; font-family: monospace; font-size: 15px; margin-top: 4px; }
+
+        /* ビューポート（キャンバス表示エリア） */
+        #viewport {
+            flex: 1;
+            background: radial-gradient(circle at center, #1e293b 0%, #0b0f1a 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        canvas {
+            background: transparent;
+            max-width: 95%;
+            max-height: 95%;
+            touch-action: none;
+        }
+
+        input[type="range"] { width: 100%; cursor: pointer; }
+
+        @media (max-width: 768px) {
+            #app-main { flex-direction: column; }
+            #sidebar { width: 100%; height: 320px; order: 2; }
+            #viewport { order: 1; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="header-bar">
+    <span>SYSTEM: ONLINE</span>
+    <span style="color:#fbbf24">VER: v0.5.1</span>
+    <span>ENGINE: FEM_STABLE_V4</span>
+    <span>FPS: <span id="fps-num">60</span></span>
+</div>
+
+<div id="app-main">
+    <div id="sidebar">
+        <div class="ui-group">
+            <div class="ui-label">ヤング率 E <span class="ui-sub" id="e-disp">200 GPa-like</span></div>
+            <input type="range" id="e-slider" min="10" max="500" value="200">
+        </div>
+
+        <div class="ui-group">
+            <div class="ui-label">メッシュ <span class="ui-sub">40 x 12</span></div>
+            <select><option>高精細 40 x 12</option></select>
+        </div>
+
+        <div class="ui-group">
+            <div class="ui-label">形状プリセット <span class="ui-sub">手描き編集</span></div>
+            <select><option>手描き編集</option></select>
+        </div>
+
+        <div class="btn-grid">
+            <button id="mode-add" class="active-add">描いて材料を追加</button>
+            <button id="mode-del">削って穴にする</button>
+        </div>
+
+        <button style="background:#1a2233; color:#4a5568;">プリセット形状を適用</button>
+        <button class="purple-btn" id="viz-btn">解いている行列 Kr を可視化</button>
+        <button id="reset-btn" style="background:#2d3748;">初期値に戻す</button>
+
+        <div class="stat-grid">
+            <div class="stat-card">
+                <span class="ui-sub" style="font-size:10px">最大変位</span>
+                <span id="res-disp" class="stat-val">0.0000</span>
+            </div>
+            <div class="stat-card">
+                <span class="ui-sub" style="font-size:10px">最大応力</span>
+                <span id="res-stress" class="stat-val">0.00e+0</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="viewport">
+        <canvas id="femCanvas"></canvas>
+    </div>
+</div>
+
+<script>
+/**
+ * Stress Simulator v0.5.1
+ */
+const NX = 40, NY = 12;
+const CW = 800, CH = 450;
+let E_val = 200;
+let drawMode = 'add';
+let vizKr = false;
+
+const canvas = document.getElementById('femCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = CW; canvas.height = CH;
+
+let grid = new Int8Array(NX * NY).fill(1);
+let u = new Float64Array((NX + 1) * (NY + 1) * 2);
+let stress = new Float64Array(NX * NY);
+
+// --- 物理ソルバー ---
+function solve() {
+    const size = (NX + 1) * (NY + 1) * 2;
+    const f = new Float64Array(size);
+    const r = new Float64Array(size);
+    const p = new Float64Array(size);
+    const Ap = new Float64Array(size);
+
+    // 右端荷重
+    for (let j = 0; j <= NY; j++) {
+        f[(NX * (NY+1) + j) * 2 + 1] = 0.15;
+    }
+
+    const matMul = (vin, vout) => {
+        vout.fill(0);
+        const k = E_val * 0.05;
+        for (let i = 0; i < NX; i++) {
+            for (let j = 0; j < NY; j++) {
+                if (grid[i * NY + j] === 0) continue;
+                const nodes = [i*(NY+1)+j, (i+1)*(NY+1)+j, (i+1)*(NY+1)+(j+1), i*(NY+1)+(j+1)];
+                for(let a of nodes) {
+                    if (a % (NY+1) === 0 && Math.floor(a/(NY+1)) === 0) continue;
+                    for(let b of nodes) {
+                        const w = (a === b) ? 1.0 : -0.25;
+                        vout[a*2] += vin[b*2] * k * w;
+                        vout[a*2+1] += vin[b*2+1] * k * w;
+                    }
+                }
+            }
+        }
+        for(let j=0; j<=NY; j++) { vout[j*2] = vin[j*2]; vout[j*2+1] = vin[j*2+1]; }
+    };
+
+    matMul(u, Ap);
+    for(let i=0; i<size; i++) { r[i] = f[i] - Ap[i]; p[i] = r[i]; }
+
+    for(let it=0; it<35; it++) {
+        matMul(p, Ap);
+        let rtr = 0, pAp = 0;
+        for(let i=0; i<size; i++) { rtr += r[i]*r[i]; pAp += p[i]*Ap[i]; }
+        if(pAp < 1e-20) break;
+        const alpha = rtr / pAp;
+        let nrtr = 0;
+        for(let i=0; i<size; i++) { u[i] += alpha*p[i]; r[i] -= alpha*Ap[i]; nrtr += r[i]*r[i]; }
+        if(nrtr < 1e-12) break;
+        const beta = nrtr / rtr;
+        for(let i=0; i<size; i++) p[i] = r[i] + beta*p[i];
+    }
+
+    let ms = 0;
+    for(let i=0; i<NX; i++) {
+        for(let j=0; j<NY; j++) {
+            if(grid[i*NY+j] === 0) { stress[i*NY+j] = 0; continue; }
+            const n0 = i*(NY+1)+j, n1 = (i+1)*(NY+1)+j;
+            const s = Math.sqrt(Math.pow(u[n1*2]-u[n0*2],2) + Math.pow(u[n1*2+1]-u[n0*2+1],2)) * E_val * 40;
+            stress[i*NY+j] = s;
+            if(s > ms) ms = s;
+        }
+    }
+    return ms;
+}
+
+function getC(v, m) {
+    if(m <= 0) return '#3b82f6';
+    const r = Math.min(v/m, 1.0);
+    return `hsla(${(1.0-r)*240}, 80%, 50%, 0.8)`;
+}
+
+// --- メインループ ---
+let last = 0;
+function render(now) {
+    if(now - last > 16) {
+        document.getElementById('fps-num').textContent = Math.round(1000/(now-last)) || 60;
+        last = now;
+    }
+
+    const maxS = solve();
+    ctx.clearRect(0, 0, CW, CH);
+
+    const step = 15, ox = 80, oy = 110, sc = 18.0;
+
+    document.getElementById('res-stress').textContent = maxS.toExponential(2);
+    let maxD = 0; u.forEach(v => { if(Math.abs(v)>maxD) maxD = Math.abs(v); });
+    document.getElementById('res-disp').textContent = maxD.toFixed(4);
+
+    for(let i=0; i<NX; i++) {
+        for(let j=0; j<NY; j++) {
+            if(grid[i*NY+j] === 0) continue;
+            const ns = [i*(NY+1)+j, (i+1)*(NY+1)+j, (i+1)*(NY+1)+(j+1), i*(NY+1)+(j+1)];
+            ctx.beginPath();
+            ctx.fillStyle = vizKr ? `rgba(139, 92, 246, ${0.4+Math.random()*0.3})` : getC(stress[i*NY+j], maxS);
+            ns.forEach((idx, k) => {
+                const px = ox + Math.floor(idx/(NY+1))*step + u[idx*2]*sc;
+                const py = oy + (idx%(NY+1))*step + u[idx*2+1]*sc;
+                if(k===0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            });
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.06)"; ctx.stroke();
+        }
+    }
+    // 固定端描画
+    ctx.fillStyle = "#fff";
+    for(let j=0; j<=NY; j++) ctx.fillRect(ox-8, oy+j*step-2, 4, 4);
+    // 荷重矢印
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+    const ax = ox + NX*step + 20, ay = oy + NY*step/2;
+    ctx.beginPath(); ctx.moveTo(ax, ay-20); ctx.lineTo(ax, ay+20); ctx.lineTo(ax-5, ay+15); ctx.moveTo(ax, ay+20); ctx.lineTo(ax+5, ay+15); ctx.stroke();
+
+    requestAnimationFrame(render);
+}
+
+// --- イベント ---
+const interact = (e) => {
+    if(e.buttons !== 1 && e.type !== 'touchstart') return;
+    const r = canvas.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = (cx - r.left) * (CW/r.width), y = (cy - r.top) * (CH/r.height);
+    const gi = Math.floor((x-80)/15), gj = Math.floor((y-110)/15);
+    if(gi>=0 && gi<NX && gj>=0 && gj<NY) grid[gi*NY+gj] = (drawMode==='add'?1:0);
+};
+
+canvas.addEventListener('mousedown', interact);
+canvas.addEventListener('mousemove', interact);
+canvas.addEventListener('touchstart', (e)=>{e.preventDefault(); interact(e);}, {passive:false});
+canvas.addEventListener('touchmove', (e)=>{e.preventDefault(); interact(e);}, {passive:false});
+
+document.getElementById('mode-add').onclick = (e) => {
+    drawMode='add'; e.target.className='active-add'; document.getElementById('mode-del').className='';
+};
+document.getElementById('mode-del').onclick = (e) => {
+    drawMode='del'; e.target.className='active-del'; document.getElementById('mode-add').className='';
+};
+document.getElementById('e-slider').oninput = (e) => {
+    E_val = e.target.value; document.getElementById('e-disp').textContent = E_val + " GPa-like";
+};
+document.getElementById('reset-btn').onclick = () => {
+    grid.fill(1);
+    for(let i=6; i<10; i++) for(let j=NY-4; j<NY; j++) grid[i*NY+j]=0;
+    for(let i=22; i<25; i++) for(let j=NY-2; j<NY; j++) grid[i*NY+j]=0;
+};
+document.getElementById('viz-btn').onclick = () => { vizKr = !vizKr; };
+
+// 強制初期化
+document.getElementById('reset-btn').click();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
             background: rgba(0,0,0,0.3);
             padding: 12px;
             border-radius: 10px;
